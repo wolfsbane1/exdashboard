@@ -1,0 +1,13 @@
+services:
+  exdash:
+    build:
+      context: .
+      args:
+        VITE_EXDASH_API_URL: /api/exdash
+    image: exdash:local-aws-test
+    ports:
+      - "4000:4000"
+    env_file:
+      - deploy/aws/env.aws.example
+    environment:
+      FSDS_DB_PASSWORD: "${FSDS_DB_PASSWORD}"

@@ -1,0 +1,194 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Base styles */
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #F9FAFB;
+  color: #1F2937;
+}
+
+.dark body {
+  background-color: #0f1020;
+  color: #e5e7eb;
+}
+
+.dark .bg-slate-50,
+.dark .bg-gray-50 {
+  background-color: #121126 !important;
+}
+
+.dark .bg-white {
+  background-color: #19152e !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: #25213d !important;
+}
+
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .text-gray-800,
+.dark .text-gray-700,
+.dark .text-gray-600 {
+  color: #e5e7eb !important;
+}
+
+.dark .text-gray-500,
+.dark .text-gray-400 {
+  color: #a5a1c2 !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #121126 !important;
+  color: #e5e7eb !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .finance-table th {
+  background: #19152e;
+}
+
+.maximized-widget-content .recharts-responsive-container {
+  min-height: min(68vh, 640px) !important;
+  height: min(68vh, 640px) !important;
+}
+
+.maximized-widget-content .finance-table .overflow-auto {
+  max-height: 72vh !important;
+}
+
+/* Active dashboard card edge animation */
+.active-module-card {
+  position: relative;
+  isolation: isolate;
+}
+
+.active-module-card::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: '';
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #ffffff, transparent) 0 0 / 44% 2px no-repeat,
+    linear-gradient(180deg, transparent, #ffffff, transparent) 100% 0 / 2px 44% no-repeat,
+    linear-gradient(270deg, transparent, #ffffff, transparent) 100% 100% / 44% 2px no-repeat,
+    linear-gradient(0deg, transparent, #ffffff, transparent) 0 100% / 2px 44% no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  animation: module-card-inner-edge-run 2.8s linear infinite;
+  pointer-events: none;
+}
+
+.active-module-card::after {
+  position: absolute;
+  inset: 8px;
+  z-index: 0;
+  content: '';
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0.35rem;
+  pointer-events: none;
+}
+
+.module-card-content {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes module-card-inner-edge-run {
+  0% {
+    background-position:
+      -44% 0,
+      100% -44%,
+      144% 100%,
+      0 144%;
+  }
+  25% {
+    background-position:
+      144% 0,
+      100% -44%,
+      144% 100%,
+      0 144%;
+  }
+  50% {
+    background-position:
+      144% 0,
+      100% 144%,
+      144% 100%,
+      0 144%;
+  }
+  75% {
+    background-position:
+      144% 0,
+      100% 144%,
+      -44% 100%,
+      0 144%;
+  }
+  100% {
+    background-position:
+      144% 0,
+      100% 144%,
+      -44% 100%,
+      0 -44%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .active-module-card::before {
+    animation: none;
+  }
+}
+
+/* React Grid Layout overrides */
+.react-grid-layout {
+  position: relative;
+}
+
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+}
+
+.react-grid-placeholder {
+  background: #DC2626;
+  opacity: 0.1;
+  border-radius: 1rem;
+}
+
+/* Table styles */
+.finance-table th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+}

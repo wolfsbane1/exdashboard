@@ -1,0 +1,66 @@
+{
+  "family": "exdash",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::<account-id>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<account-id>:role/exdashTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "exdash",
+      "image": "<account-id>.dkr.ecr.<region>.amazonaws.com/exdash:<image-tag>",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 4000,
+          "hostPort": 4000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "4000" },
+        { "name": "SERVE_STATIC", "value": "true" },
+        { "name": "TRUST_PROXY", "value": "true" },
+        { "name": "VITE_EXDASH_API_URL", "value": "/api/exdash" },
+        { "name": "FSDS_DB_DRIVER", "value": "postgres" },
+        { "name": "FSDS_DB_HOST", "value": "<aws-rds-or-aurora-postgresql-endpoint>" },
+        { "name": "FSDS_DB_PORT", "value": "5432" },
+        { "name": "FSDS_DB_DATABASE", "value": "empowerx_fsds" },
+        { "name": "FSDS_DB_SCHEMA", "value": "public" },
+        { "name": "FSDS_DB_USER", "value": "exdash_readonly" },
+        { "name": "FSDS_DB_SSL", "value": "true" },
+        { "name": "FSDS_DB_SSL_REJECT_UNAUTHORIZED", "value": "true" },
+        { "name": "FSDS_DB_AMOUNT_SCALE", "value": "100" },
+        { "name": "FSDS_DB_POOL_MAX", "value": "10" },
+        { "name": "FSDS_DB_CONNECTION_TIMEOUT_MS", "value": "10000" },
+        { "name": "FSDS_DB_STATEMENT_TIMEOUT_MS", "value": "30000" }
+      ],
+      "secrets": [
+        {
+          "name": "FSDS_DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:<region>:<account-id>:secret:exdash/fsds-db-password"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:4000/api/exdash/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/exdash",
+          "awslogs-region": "<region>",
+          "awslogs-stream-prefix": "exdash"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=exDASH - EMPOWERX Dashboard and Analytics Services Hub
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/exdash
+EnvironmentFile=/etc/exdash/exdash.env
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+User=exdash
+Group=exdash
+
+[Install]
+WantedBy=multi-user.target

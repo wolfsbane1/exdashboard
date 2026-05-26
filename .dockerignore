@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ts
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local*
+.local-postgres-18
+empowerx-fsds.sql
+empowerx-fsds.local-import.sql
+test-artifacts
+npm-debug.log*
