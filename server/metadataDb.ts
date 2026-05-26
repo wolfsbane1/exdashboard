@@ -1,6 +1,11 @@
 import pg from 'pg';
 import type { Pool as PgPool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { asc, desc, eq, inArray } from 'drizzle-orm';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { DashboardStore, ScenarioStore } from './types';
+import * as schema from './db/schema';
+import { dashboardTemplates, financialScenarios, savedDashboards } from './db/schema';
 
 const { Pool } = pg;
 
@@ -15,7 +20,7 @@ type MetadataDbConfig = {
 };
 
 let pool: PgPool | null = null;
-let initialized = false;
+let db: NodePgDatabase<typeof schema> | null = null;
 
 function parseBoolean(value: string | undefined, fallback = false) {
   if (!value) return fallback;
@@ -42,19 +47,19 @@ function getConfig(): MetadataDbConfig {
   };
 }
 
-function getMissingKeys(config: MetadataDbConfig) {
+function getMissingKeys() {
   const required = ['EXDASH_DB_HOST', 'EXDASH_DB_DATABASE', 'EXDASH_DB_USER', 'EXDASH_DB_PASSWORD'] as const;
   return required.filter((key) => !process.env[key]);
 }
 
 function getPool() {
-  const config = getConfig();
-  const missing = getMissingKeys(config);
+  const missing = getMissingKeys();
   if (missing.length > 0) {
     throw new Error(`exDASH metadata database is not configured. Missing: ${missing.join(', ')}`);
   }
 
   if (!pool) {
+    const config = getConfig();
     pool = new Pool({
       host: config.host,
       port: config.port,
@@ -68,55 +73,18 @@ function getPool() {
   return pool;
 }
 
-async function ensureMetadataSchema() {
-  if (initialized) return;
-  const db = getPool();
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS dashboard_templates (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      scope TEXT NOT NULL,
-      widgets JSONB NOT NULL DEFAULT '[]',
-      filters JSONB NOT NULL DEFAULT '{}',
-      visibility TEXT NOT NULL,
-      created_by TEXT NOT NULL DEFAULT 'System',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-
-    CREATE TABLE IF NOT EXISTS saved_dashboards (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      scope TEXT NOT NULL,
-      widgets JSONB NOT NULL DEFAULT '[]',
-      filters JSONB NOT NULL DEFAULT '{}',
-      visibility TEXT NOT NULL,
-      created_by TEXT NOT NULL DEFAULT 'current-user',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-
-    CREATE TABLE IF NOT EXISTS financial_scenarios (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      baseline_scope TEXT NOT NULL,
-      office_name TEXT NOT NULL,
-      fiscal_year INTEGER NOT NULL,
-      assumptions JSONB NOT NULL DEFAULT '[]',
-      projected_results JSONB,
-      baseline_data JSONB,
-      status TEXT NOT NULL DEFAULT 'DRAFT',
-      created_by TEXT NOT NULL DEFAULT 'current-user',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-  initialized = true;
+function getDb() {
+  if (!db) {
+    db = drizzle(getPool(), { schema });
+  }
+  return db;
 }
 
-function toDashboard(row: any): DashboardStore {
+function toIso(value: Date | string) {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function toDashboard(row: typeof dashboardTemplates.$inferSelect | typeof savedDashboards.$inferSelect): DashboardStore {
   return {
     id: row.id,
     name: row.name,
@@ -125,33 +93,33 @@ function toDashboard(row: any): DashboardStore {
     widgets: row.widgets || [],
     filters: row.filters || {},
     visibility: row.visibility,
-    createdBy: row.created_by,
-    createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at).toISOString(),
+    createdBy: row.createdBy,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt),
   };
 }
 
-function toScenario(row: any): ScenarioStore {
+function toScenario(row: typeof financialScenarios.$inferSelect): ScenarioStore {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
-    baselineScope: row.baseline_scope,
-    officeName: row.office_name,
-    fiscalYear: row.fiscal_year,
+    baselineScope: row.baselineScope,
+    officeName: row.officeName,
+    fiscalYear: row.fiscalYear,
     assumptions: row.assumptions || [],
-    projectedResults: row.projected_results || null,
-    baselineData: row.baseline_data || null,
+    projectedResults: row.projectedResults || null,
+    baselineData: row.baselineData || null,
     status: row.status,
-    createdBy: row.created_by,
-    createdAt: new Date(row.created_at).toISOString(),
+    createdBy: row.createdBy,
+    createdAt: toIso(row.createdAt),
   };
 }
 
 export async function checkMetadataDbConnection() {
   try {
     const config = getConfig();
-    const missing = getMissingKeys(config);
+    const missing = getMissingKeys();
     if (missing.length > 0) {
       return { configured: false, ready: false, missing };
     }
@@ -176,178 +144,137 @@ export async function checkMetadataDbConnection() {
 }
 
 export async function seedDashboardTemplates(templates: DashboardStore[]) {
-  await ensureMetadataSchema();
-  const db = getPool();
   for (const template of templates) {
-    await db.query(
-      `INSERT INTO dashboard_templates (
-        id, name, description, scope, widgets, filters, visibility, created_by, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
-      ON CONFLICT (id) DO NOTHING`,
-      [
-        template.id,
-        template.name,
-        template.description,
-        template.scope,
-        JSON.stringify(template.widgets),
-        JSON.stringify(template.filters),
-        template.visibility,
-        template.createdBy,
-        template.createdAt,
-        template.updatedAt,
-      ]
-    );
+    await getDb()
+      .insert(dashboardTemplates)
+      .values({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        scope: template.scope,
+        widgets: template.widgets,
+        filters: template.filters,
+        visibility: template.visibility,
+        createdBy: template.createdBy,
+        createdAt: new Date(template.createdAt),
+        updatedAt: new Date(template.updatedAt),
+      })
+      .onConflictDoNothing({ target: dashboardTemplates.id });
   }
 }
 
 export async function listDashboardTemplates() {
-  await ensureMetadataSchema();
-  const result = await getPool().query('SELECT * FROM dashboard_templates ORDER BY created_at, name');
-  return result.rows.map(toDashboard);
+  const rows = await getDb()
+    .select()
+    .from(dashboardTemplates)
+    .orderBy(asc(dashboardTemplates.createdAt), asc(dashboardTemplates.name));
+  return rows.map(toDashboard);
 }
 
 export async function createDashboard(dashboard: DashboardStore) {
-  await ensureMetadataSchema();
-  const result = await getPool().query(
-    `INSERT INTO saved_dashboards (
-      id, name, description, scope, widgets, filters, visibility, created_by, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)
-    RETURNING *`,
-    [
-      dashboard.id,
-      dashboard.name,
-      dashboard.description,
-      dashboard.scope,
-      JSON.stringify(dashboard.widgets),
-      JSON.stringify(dashboard.filters),
-      dashboard.visibility,
-      dashboard.createdBy,
-      dashboard.createdAt,
-      dashboard.updatedAt,
-    ]
-  );
-  return toDashboard(result.rows[0]);
+  const rows = await getDb()
+    .insert(savedDashboards)
+    .values({
+      id: dashboard.id,
+      name: dashboard.name,
+      description: dashboard.description,
+      scope: dashboard.scope,
+      widgets: dashboard.widgets,
+      filters: dashboard.filters,
+      visibility: dashboard.visibility,
+      createdBy: dashboard.createdBy,
+      createdAt: new Date(dashboard.createdAt),
+      updatedAt: new Date(dashboard.updatedAt),
+    })
+    .returning();
+  return toDashboard(rows[0]);
 }
 
 export async function listDashboards() {
-  await ensureMetadataSchema();
-  const result = await getPool().query('SELECT * FROM saved_dashboards ORDER BY updated_at DESC');
-  return result.rows.map(toDashboard);
+  const rows = await getDb().select().from(savedDashboards).orderBy(desc(savedDashboards.updatedAt));
+  return rows.map(toDashboard);
 }
 
 export async function updateDashboard(id: string, changes: Partial<DashboardStore>) {
-  await ensureMetadataSchema();
-  const current = await getPool().query('SELECT * FROM saved_dashboards WHERE id = $1', [id]);
-  if (current.rowCount === 0) return null;
+  const current = await getDb().select().from(savedDashboards).where(eq(savedDashboards.id, id)).limit(1);
+  if (current.length === 0) return null;
 
-  const next = { ...toDashboard(current.rows[0]), ...changes, id, updatedAt: new Date().toISOString() };
-  const result = await getPool().query(
-    `UPDATE saved_dashboards SET
-      name = $2,
-      description = $3,
-      scope = $4,
-      widgets = $5::jsonb,
-      filters = $6::jsonb,
-      visibility = $7,
-      created_by = $8,
-      updated_at = $9
-    WHERE id = $1
-    RETURNING *`,
-    [
-      id,
-      next.name,
-      next.description,
-      next.scope,
-      JSON.stringify(next.widgets),
-      JSON.stringify(next.filters),
-      next.visibility,
-      next.createdBy,
-      next.updatedAt,
-    ]
-  );
-  return toDashboard(result.rows[0]);
+  const next = { ...toDashboard(current[0]), ...changes, id, updatedAt: new Date().toISOString() };
+  const rows = await getDb()
+    .update(savedDashboards)
+    .set({
+      name: next.name,
+      description: next.description,
+      scope: next.scope,
+      widgets: next.widgets,
+      filters: next.filters,
+      visibility: next.visibility,
+      createdBy: next.createdBy,
+      updatedAt: new Date(next.updatedAt),
+    })
+    .where(eq(savedDashboards.id, id))
+    .returning();
+  return toDashboard(rows[0]);
 }
 
 export async function deleteDashboard(id: string) {
-  await ensureMetadataSchema();
-  const result = await getPool().query('DELETE FROM saved_dashboards WHERE id = $1', [id]);
-  return (result.rowCount || 0) > 0;
+  const rows = await getDb().delete(savedDashboards).where(eq(savedDashboards.id, id)).returning({ id: savedDashboards.id });
+  return rows.length > 0;
 }
 
 export async function createScenario(scenario: ScenarioStore) {
-  await ensureMetadataSchema();
-  const result = await getPool().query(
-    `INSERT INTO financial_scenarios (
-      id, name, description, baseline_scope, office_name, fiscal_year, assumptions,
-      projected_results, baseline_data, status, created_by, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12)
-    RETURNING *`,
-    [
-      scenario.id,
-      scenario.name,
-      scenario.description,
-      scenario.baselineScope,
-      scenario.officeName,
-      scenario.fiscalYear,
-      JSON.stringify(scenario.assumptions),
-      JSON.stringify(scenario.projectedResults),
-      JSON.stringify(scenario.baselineData),
-      scenario.status,
-      scenario.createdBy,
-      scenario.createdAt,
-    ]
-  );
-  return toScenario(result.rows[0]);
+  const rows = await getDb()
+    .insert(financialScenarios)
+    .values({
+      id: scenario.id,
+      name: scenario.name,
+      description: scenario.description,
+      baselineScope: scenario.baselineScope,
+      officeName: scenario.officeName,
+      fiscalYear: scenario.fiscalYear,
+      assumptions: scenario.assumptions,
+      projectedResults: scenario.projectedResults,
+      baselineData: scenario.baselineData,
+      status: scenario.status,
+      createdBy: scenario.createdBy,
+      createdAt: new Date(scenario.createdAt),
+    })
+    .returning();
+  return toScenario(rows[0]);
 }
 
 export async function listScenarios() {
-  await ensureMetadataSchema();
-  const result = await getPool().query('SELECT * FROM financial_scenarios ORDER BY created_at DESC');
-  return result.rows.map(toScenario);
+  const rows = await getDb().select().from(financialScenarios).orderBy(desc(financialScenarios.createdAt));
+  return rows.map(toScenario);
 }
 
 export async function getScenario(id: string) {
-  await ensureMetadataSchema();
-  const result = await getPool().query('SELECT * FROM financial_scenarios WHERE id = $1', [id]);
-  return result.rows[0] ? toScenario(result.rows[0]) : null;
+  const rows = await getDb().select().from(financialScenarios).where(eq(financialScenarios.id, id)).limit(1);
+  return rows[0] ? toScenario(rows[0]) : null;
 }
 
 export async function saveScenario(scenario: ScenarioStore) {
-  await ensureMetadataSchema();
-  const result = await getPool().query(
-    `UPDATE financial_scenarios SET
-      name = $2,
-      description = $3,
-      baseline_scope = $4,
-      office_name = $5,
-      fiscal_year = $6,
-      assumptions = $7::jsonb,
-      projected_results = $8::jsonb,
-      baseline_data = $9::jsonb,
-      status = $10,
-      created_by = $11
-    WHERE id = $1
-    RETURNING *`,
-    [
-      scenario.id,
-      scenario.name,
-      scenario.description,
-      scenario.baselineScope,
-      scenario.officeName,
-      scenario.fiscalYear,
-      JSON.stringify(scenario.assumptions),
-      JSON.stringify(scenario.projectedResults),
-      JSON.stringify(scenario.baselineData),
-      scenario.status,
-      scenario.createdBy,
-    ]
-  );
-  return result.rows[0] ? toScenario(result.rows[0]) : null;
+  const rows = await getDb()
+    .update(financialScenarios)
+    .set({
+      name: scenario.name,
+      description: scenario.description,
+      baselineScope: scenario.baselineScope,
+      officeName: scenario.officeName,
+      fiscalYear: scenario.fiscalYear,
+      assumptions: scenario.assumptions,
+      projectedResults: scenario.projectedResults,
+      baselineData: scenario.baselineData,
+      status: scenario.status,
+      createdBy: scenario.createdBy,
+    })
+    .where(eq(financialScenarios.id, scenario.id))
+    .returning();
+  return rows[0] ? toScenario(rows[0]) : null;
 }
 
 export async function listScenariosByIds(ids: string[]) {
-  await ensureMetadataSchema();
   if (ids.length === 0) return [];
-  const result = await getPool().query('SELECT * FROM financial_scenarios WHERE id = ANY($1::text[])', [ids]);
-  return result.rows.map(toScenario);
+  const rows = await getDb().select().from(financialScenarios).where(inArray(financialScenarios.id, ids));
+  return rows.map(toScenario);
 }

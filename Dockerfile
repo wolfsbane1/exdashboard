@@ -3,7 +3,11 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN unset NPM_TOKEN NODE_AUTH_TOKEN \
+  && npm config set registry https://registry.npmjs.org/ \
+  && npm config delete //registry.npmjs.org/:_authToken || true \
+  && npm config delete _authToken || true \
+  && npm ci --registry=https://registry.npmjs.org/
 
 COPY . .
 

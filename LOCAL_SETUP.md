@@ -135,6 +135,12 @@ This starts:
 - `exdash-db-admin-local`: Adminer for the exDASH metadata DB on host port `8082`.
 - `exdash`: exDASH app on host port `4000`.
 
+The exDASH container runs metadata DB migrations before starting the server:
+
+```bash
+npm run db:migrate && npm run start
+```
+
 Open the app:
 
 ```text
@@ -181,7 +187,55 @@ http://localhost:4000/api/exdash/dashboards
 http://localhost:4000/api/exdash/scenarios
 ```
 
-The first call to `/dashboard-templates` seeds default templates into the exDASH metadata DB if they do not already exist.
+The database tables are created by Drizzle migrations. The first call to `/dashboard-templates` only seeds default dashboard template rows if they do not already exist.
+
+## Drizzle Commands
+
+The exDASH metadata DB schema is defined in:
+
+```text
+server/db/schema.ts
+```
+
+Drizzle config is in:
+
+```text
+drizzle.config.ts
+```
+
+Generate a migration after editing `server/db/schema.ts`:
+
+```bash
+npm run db:generate
+```
+
+Apply migrations:
+
+```bash
+npm run db:migrate
+```
+
+When using `docker-compose.local.yml`, migrations are applied automatically before the exDASH server starts.
+
+If you want to run migrations from your host machine instead of inside Docker, temporarily point the metadata DB host/port to the published local port:
+
+```bash
+$env:EXDASH_DB_HOST="localhost"
+$env:EXDASH_DB_PORT="15433"
+$env:EXDASH_DB_DATABASE="exdash_metadata"
+$env:EXDASH_DB_USER="exdash"
+$env:EXDASH_DB_PASSWORD="exdash_dev"
+$env:EXDASH_DB_SSL="false"
+npm run db:migrate
+```
+
+Open Drizzle Studio:
+
+```bash
+npm run db:studio
+```
+
+For Drizzle Studio from your host, use the same host env override above because `exdash-db-local` only resolves inside Docker.
 
 ## Direct DB Tests
 
