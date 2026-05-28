@@ -312,3 +312,22 @@ Then start again:
 ```bash
 docker compose -f docker-compose.local.yml up --build
 ```
+
+
+## SQL for creating exdash account read only
+CREATE USER exdash_readonly WITH PASSWORD 'YourStrongPassword';
+
+GRANT CONNECT ON DATABASE empowerx_fsds TO exdash_readonly;
+
+GRANT USAGE ON SCHEMA public TO exdash_readonly;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO exdash_readonly;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE
+ON ALL TABLES IN SCHEMA public
+FROM exdash_readonly;
+
+## SQL for Dropping user
+REASSIGN OWNED BY exdash_readonly TO postgres;
+DROP OWNED BY exdash_readonly;
+DROP USER exdash_readonly;
